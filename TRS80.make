@@ -1,1 +1,153 @@
-#   File:       TRS80.make#   Target:     TRS80#   Sources:    TRS80.r#               TRS80.c#               Splash.c#				TRSWin.c#				NPreferences.c#				Preferences.c#				Prefs.c#               TRS.c#				TRS.a#   Created:    Friday, June 6, 1997 05:40:09 PMMAKEFILE     = TRS80.make¥MondoBuild¥ = {MAKEFILE}  # Make blank to avoid rebuilds when makefile is modifiedIncludes     =Sym¥PPC      = ObjDir¥PPC   =Sym¥68K      = ObjDir¥68K   =PPCCOptions  = {Includes} {Sym¥PPC} -opt speed COptions     = {Includes} {Sym¥68K} -model CFMSeg -mc68020 -opt all -mbg offAOptions     = {Includes} {Sym¥68K} -wbObjects¥PPC  = ¶		"{ObjDir¥PPC}TRS80.c.x" ¶		"{ObjDir¥PPC}Splash.c.x" ¶		"{ObjDir¥PPC}TRSWin.c.x" ¶		"{ObjDir¥PPC}NPreferences.c.x" ¶		"{ObjDir¥PPC}Preferences.c.x" ¶		"{ObjDir¥PPC}Prefs.c.x" ¶		"{ObjDir¥PPC}TRS.c.x"Objects¥68K  = ¶		"{ObjDir¥68K}TRS80.c.o" ¶		"{ObjDir¥68K}Splash.c.o" ¶		"{ObjDir¥68K}TRSWin.c.o" ¶		"{ObjDir¥68K}NPreferences.c.o" ¶		"{ObjDir¥68K}Preferences.c.o" ¶		"{ObjDir¥68K}Prefs.c.o" ¶		"{ObjDir¥68K}TRS.c.o"Objects¥ASM  = ¶		"{ObjDir¥68K}TRS.a.o"TRS80 ÄÄ {¥MondoBuild¥} TRS80.ppc TRS80.68k TRS80.r TRS80.rsrc	Duplicate -y TRS80.68k TRS80	MergeFragment -n TRS80 TRS80.ppc TRS80	Rez TRS80.r -o {Targ} {Includes} -append	SetFile -t 'APPL' -c 'RS80' -a BMi {Targ}TRS80.ppc ÄÄ {¥MondoBuild¥} {Objects¥PPC}	PPCLink ¶		-o {Targ} {Sym¥PPC} ¶		{Objects¥PPC} ¶		-t 'APPL' ¶		-c '????' ¶		-weaklib "AppearanceLib,NavigationLib" ¶		"{SharedLibraries}InterfaceLib" ¶		"{SharedLibraries}StdCLib" ¶		"{SharedLibraries}MathLib" ¶		"{PPCLibraries}StdCRuntime.o" ¶		"{PPCLibraries}PPCCRuntime.o" ¶		"{PPCLibraries}PPCToolLibs.o" ¶		"{SharedLibraries}DragLib" ¶		"{SharedLibraries}AppearanceLib" ¶		"{SharedLibraries}NavigationLib"TRS80.68k ÄÄ {¥MondoBuild¥} {Objects¥68K}	ILink ¶		-o {Targ} -d {Sym¥68K} ¶		{Objects¥68K} ¶		-t 'APPL' ¶		-c '????' ¶		-model CFMSeg ¶		-weaklib "AppearanceLib,NavigationLib" ¶		"{CFM68KLibraries}NuMathLib.o" ¶		#"{CLibraries}Complex.o" ¶		"{SharedLibraries}StdCLib" ¶		"{CFM68KLibraries}NuMacRuntime.o" ¶		"{CFM68KLibraries}NuToolLibs.o" ¶		"{SharedLibraries}InterfaceLib" ¶		"{SharedLibraries}DragLib" ¶		"{SharedLibraries}AppearanceLib" ¶		"{SharedLibraries}NavigationLib"TRS80.68k ÄÄ {¥MondoBuild¥} {Objects¥ASM}	Link ¶		-o {Targ} -d {Sym¥68K} ¶		{Objects¥ASM} ¶		-ra =resPreload ¶		-rn ¶		-rt 'TRS '=128 ¶		#"{Libraries}MacRuntime.o" ¶		#"{Libraries}IntEnv.o" ¶		#"{Libraries}ToolLibs.o" ¶		#"{Libraries}Interface.o""{ObjDir¥PPC}TRS80.c.x" Ä {¥MondoBuild¥} TRS80.c TRS80.h	{PPCC} TRS80.c -o {Targ} {PPCCOptions}"{ObjDir¥PPC}Splash.c.x" Ä {¥MondoBuild¥} Splash.c TRS80.h	{PPCC} Splash.c -o {Targ} {PPCCOptions}"{ObjDir¥PPC}TRSWin.c.x" Ä {¥MondoBuild¥} TRSWin.c TRS80.h	{PPCC} TRSWin.c -o {Targ} {PPCCOptions}"{ObjDir¥PPC}NPreferences.c.x" Ä {¥MondoBuild¥} NPreferences.c TRS80.h	{PPCC} NPreferences.c -o {Targ} {PPCCOptions}"{ObjDir¥PPC}Preferences.c.x" Ä {¥MondoBuild¥} Preferences.c TRS80.h	{PPCC} Preferences.c -o {Targ} {PPCCOptions}"{ObjDir¥PPC}Prefs.c.x" Ä {¥MondoBuild¥} Prefs.c TRS80.h	{PPCC} Prefs.c -o {Targ} {PPCCOptions}"{ObjDir¥PPC}TRS.c.x" Ä {¥MondoBuild¥} TRS.c TRS80.h	{PPCC} TRS.c -o {Targ} {PPCCOptions}"{ObjDir¥68K}TRS80.c.o" Ä {¥MondoBuild¥} TRS80.c TRS80.h	{C} TRS80.c -o {Targ} {COptions}"{ObjDir¥68K}Splash.c.o" Ä {¥MondoBuild¥} Splash.c TRS80.h	{C} Splash.c -o {Targ} {COptions}"{ObjDir¥68K}TRSWin.c.o" Ä {¥MondoBuild¥} TRSWin.c TRS80.h	{C} TRSWin.c -o {Targ} {COptions}"{ObjDir¥68K}NPreferences.c.o" Ä {¥MondoBuild¥} NPreferences.c TRS80.h	{C} NPreferences.c -o {Targ} {COptions}"{ObjDir¥68K}Preferences.c.o" Ä {¥MondoBuild¥} Preferences.c TRS80.h	{C} Preferences.c -o {Targ} {COptions}"{ObjDir¥68K}Prefs.c.o" Ä {¥MondoBuild¥} Prefs.c TRS80.h	{C} Prefs.c -o {Targ} {COptions}"{ObjDir¥68K}TRS.c.o" Ä {¥MondoBuild¥} TRS.c TRS80.h	{C} TRS.c -o {Targ} {COptions}"{ObjDir¥68K}TRS.a.o" Ä {¥MondoBuild¥} TRS.a	{Asm} TRS.a -o {Targ} {AOptions}
+#   File:       TRS80.make
+#   Target:     TRS80
+#   Sources:    TRS80.r
+#               TRS80.c
+#               Splash.c
+#				TRSWin.c
+#				NPreferences.c
+#				Preferences.c
+#				Prefs.c
+#               TRS.c
+#				TRS.a
+#   Created:    Friday, June 6, 1997 05:40:09 PM
+
+
+MAKEFILE     = TRS80.make
+â€¢MondoBuildâ€¢ = {MAKEFILE}  # Make blank to avoid rebuilds when makefile is modified
+Includes     =
+Symâ€¢PPC      = 
+ObjDirâ€¢PPC   =
+Symâ€¢68K      = 
+ObjDirâ€¢68K   =
+
+PPCCOptions  = {Includes} {Symâ€¢PPC} -opt speed 
+
+COptions     = {Includes} {Symâ€¢68K} -model CFMSeg -mc68020 -opt all -mbg off
+
+AOptions     = {Includes} {Symâ€¢68K} -wb
+
+Objectsâ€¢PPC  = âˆ‚
+		"{ObjDirâ€¢PPC}TRS80.c.x" âˆ‚
+		"{ObjDirâ€¢PPC}Splash.c.x" âˆ‚
+		"{ObjDirâ€¢PPC}TRSWin.c.x" âˆ‚
+		"{ObjDirâ€¢PPC}NPreferences.c.x" âˆ‚
+		"{ObjDirâ€¢PPC}Preferences.c.x" âˆ‚
+		"{ObjDirâ€¢PPC}Prefs.c.x" âˆ‚
+		"{ObjDirâ€¢PPC}TRS.c.x"
+
+Objectsâ€¢68K  = âˆ‚
+		"{ObjDirâ€¢68K}TRS80.c.o" âˆ‚
+		"{ObjDirâ€¢68K}Splash.c.o" âˆ‚
+		"{ObjDirâ€¢68K}TRSWin.c.o" âˆ‚
+		"{ObjDirâ€¢68K}NPreferences.c.o" âˆ‚
+		"{ObjDirâ€¢68K}Preferences.c.o" âˆ‚
+		"{ObjDirâ€¢68K}Prefs.c.o" âˆ‚
+		"{ObjDirâ€¢68K}TRS.c.o"
+
+Objectsâ€¢ASM  = âˆ‚
+		"{ObjDirâ€¢68K}TRS.a.o"
+
+
+TRS80 Æ’Æ’ {â€¢MondoBuildâ€¢} TRS80.ppc TRS80.68k TRS80.r TRS80.rsrc
+	Duplicate -y TRS80.68k TRS80
+	MergeFragment -n TRS80 TRS80.ppc TRS80
+	Rez TRS80.r -o {Targ} {Includes} -append
+	SetFile -t 'APPL' -c 'RS80' -a BMi {Targ}
+
+
+TRS80.ppc Æ’Æ’ {â€¢MondoBuildâ€¢} {Objectsâ€¢PPC}
+	PPCLink âˆ‚
+		-o {Targ} {Symâ€¢PPC} âˆ‚
+		{Objectsâ€¢PPC} âˆ‚
+		-t 'APPL' âˆ‚
+		-c '????' âˆ‚
+		-weaklib "AppearanceLib,NavigationLib" âˆ‚
+		"{SharedLibraries}InterfaceLib" âˆ‚
+		"{SharedLibraries}StdCLib" âˆ‚
+		"{SharedLibraries}MathLib" âˆ‚
+		"{PPCLibraries}StdCRuntime.o" âˆ‚
+		"{PPCLibraries}PPCCRuntime.o" âˆ‚
+		"{PPCLibraries}PPCToolLibs.o" âˆ‚
+		"{SharedLibraries}DragLib" âˆ‚
+		"{SharedLibraries}AppearanceLib" âˆ‚
+		"{SharedLibraries}NavigationLib"
+
+
+TRS80.68k Æ’Æ’ {â€¢MondoBuildâ€¢} {Objectsâ€¢68K}
+	ILink âˆ‚
+		-o {Targ} -d {Symâ€¢68K} âˆ‚
+		{Objectsâ€¢68K} âˆ‚
+		-t 'APPL' âˆ‚
+		-c '????' âˆ‚
+		-model CFMSeg âˆ‚
+		-weaklib "AppearanceLib,NavigationLib" âˆ‚
+		"{CFM68KLibraries}NuMathLib.o" âˆ‚
+		#"{CLibraries}Complex.o" âˆ‚
+		"{SharedLibraries}StdCLib" âˆ‚
+		"{CFM68KLibraries}NuMacRuntime.o" âˆ‚
+		"{CFM68KLibraries}NuToolLibs.o" âˆ‚
+		"{SharedLibraries}InterfaceLib" âˆ‚
+		"{SharedLibraries}DragLib" âˆ‚
+		"{SharedLibraries}AppearanceLib" âˆ‚
+		"{SharedLibraries}NavigationLib"
+
+
+TRS80.68k Æ’Æ’ {â€¢MondoBuildâ€¢} {Objectsâ€¢ASM}
+	Link âˆ‚
+		-o {Targ} -d {Symâ€¢68K} âˆ‚
+		{Objectsâ€¢ASM} âˆ‚
+		-ra =resPreload âˆ‚
+		-rn âˆ‚
+		-rt 'TRS '=128 âˆ‚
+		#"{Libraries}MacRuntime.o" âˆ‚
+		#"{Libraries}IntEnv.o" âˆ‚
+		#"{Libraries}ToolLibs.o" âˆ‚
+		#"{Libraries}Interface.o"
+
+
+"{ObjDirâ€¢PPC}TRS80.c.x" Æ’ {â€¢MondoBuildâ€¢} TRS80.c TRS80.h
+	{PPCC} TRS80.c -o {Targ} {PPCCOptions}
+
+"{ObjDirâ€¢PPC}Splash.c.x" Æ’ {â€¢MondoBuildâ€¢} Splash.c TRS80.h
+	{PPCC} Splash.c -o {Targ} {PPCCOptions}
+
+"{ObjDirâ€¢PPC}TRSWin.c.x" Æ’ {â€¢MondoBuildâ€¢} TRSWin.c TRS80.h
+	{PPCC} TRSWin.c -o {Targ} {PPCCOptions}
+
+"{ObjDirâ€¢PPC}NPreferences.c.x" Æ’ {â€¢MondoBuildâ€¢} NPreferences.c TRS80.h
+	{PPCC} NPreferences.c -o {Targ} {PPCCOptions}
+
+"{ObjDirâ€¢PPC}Preferences.c.x" Æ’ {â€¢MondoBuildâ€¢} Preferences.c TRS80.h
+	{PPCC} Preferences.c -o {Targ} {PPCCOptions}
+
+"{ObjDirâ€¢PPC}Prefs.c.x" Æ’ {â€¢MondoBuildâ€¢} Prefs.c TRS80.h
+	{PPCC} Prefs.c -o {Targ} {PPCCOptions}
+
+"{ObjDirâ€¢PPC}TRS.c.x" Æ’ {â€¢MondoBuildâ€¢} TRS.c TRS80.h
+	{PPCC} TRS.c -o {Targ} {PPCCOptions}
+
+
+"{ObjDirâ€¢68K}TRS80.c.o" Æ’ {â€¢MondoBuildâ€¢} TRS80.c TRS80.h
+	{C} TRS80.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}Splash.c.o" Æ’ {â€¢MondoBuildâ€¢} Splash.c TRS80.h
+	{C} Splash.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}TRSWin.c.o" Æ’ {â€¢MondoBuildâ€¢} TRSWin.c TRS80.h
+	{C} TRSWin.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}NPreferences.c.o" Æ’ {â€¢MondoBuildâ€¢} NPreferences.c TRS80.h
+	{C} NPreferences.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}Preferences.c.o" Æ’ {â€¢MondoBuildâ€¢} Preferences.c TRS80.h
+	{C} Preferences.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}Prefs.c.o" Æ’ {â€¢MondoBuildâ€¢} Prefs.c TRS80.h
+	{C} Prefs.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}TRS.c.o" Æ’ {â€¢MondoBuildâ€¢} TRS.c TRS80.h
+	{C} TRS.c -o {Targ} {COptions}
+
+"{ObjDirâ€¢68K}TRS.a.o" Æ’ {â€¢MondoBuildâ€¢} TRS.a
+	{Asm} TRS.a -o {Targ} {AOptions}
+

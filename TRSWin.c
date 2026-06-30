@@ -1,1 +1,1079 @@
-/* TRSWin.c *//*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/#include <MacTypes.h>#include <Icons.h>#include <Drag.h>#include <Appearance.h>#include <MacWindows.h>#include <Palettes.h>#include <string.h>#include <Fonts.h>#include <Resources.h>#include "TRS80.h"/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/#define theWindowID 128/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/extern TRSPtr trs;extern Boolean hasAppearance;/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/typedef struct {	Rect bounds;	short icon;	IconTransformType state;	short flags;} KEYRecord, *KEYPtr;typedef struct {	Rect bounds;	KEYPtr keys[4];	short selected;	Boolean hilited;} PADRecord, *PADPtr;typedef struct {	WindowPtr window;	DragTrackingHandlerUPP trackingHandler;	DragReceiveHandlerUPP receiveHandler;	Rect userState, stdState, screenFrame;	PADPtr keypad;	Ptr screen;	short foreColor, backColor, font64, font32, cursorInDrive;	Boolean dispSize, dispMode, canAcceptItems;} TRSWRecord, *TRSWPtr;static Point *posX1 = nil, *posX2 = nil;/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/extern void DoInsertDisk(short d);extern void DoEjectDisk(short d);extern void SetCursorID(short cursorID);extern void TRSReset(TRSPtr this);extern void TRSNMI(TRSPtr this);extern Ptr TRSGetScreen(TRSPtr this);extern Boolean TRSGetMode(TRSPtr this);extern Byte TRSGetDriveSelect(TRSPtr this);extern void TRSDrawText(const void *textBuf, short byteCount);extern Boolean TRSHasDisk(TRSPtr this, short d);extern OSErr TRSInsertDisk(TRSPtr this, short d, FSSpec *theDisk);/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static KEYPtr NewKEY(short iconID);static void DisposeKEY(KEYPtr this);static void UpdateKEY(KEYPtr this);static void ActivateKEY(KEYPtr this, Boolean theFlag);static void DrawKEY(KEYPtr this);static Boolean PtInKEY(KEYPtr this, Point thePoint);static void SetBoundsKEY(KEYPtr this, Rect *bounds);static void SetStateKEY(KEYPtr this, IconTransformType state);static void SetFlagsKEY(KEYPtr this, short flags);static PADPtr NewPAD(void);static void DisposePAD(PADPtr this);static void IdlePAD(PADPtr this);static void UpdatePAD(PADPtr this);static void ActivatePAD(PADPtr this, Boolean theFlag);static void DrawPAD(PADPtr this);static void ClickPAD(PADPtr this, Point thePoint);static short TrackPAD(PADPtr this, Point thePoint);static void ClearPAD(PADPtr this);static void SetBoundsPAD(PADPtr this, Rect *bounds);WindowPtr NewTRSW(void);void DisposeTRSW(WindowPtr theWindow);void IdleTRSW(WindowPtr theWindow);void UpdateTRSW(WindowPtr theWindow);void ActivateTRSW(WindowPtr theWindow, Boolean theFlag);void ClickTRSW(WindowPtr theWindow, const EventRecord *theEvent);void ZoomTRSW(WindowPtr theWindow, short partCode);static pascal OSErr TrackingHandler(DragTrackingMessage message, WindowPtr theWindow,		void *refCon, DragReference theDrag);static pascal OSErr ReceiveHandler(WindowPtr theWindow, void *refCon, DragReference theDrag);static void ResizeWindowContents(TRSWPtr this);static void AdjustZoom(TRSWPtr this);static void InitScreen(void);static void DrawScreen(TRSWPtr this);static void CheckScreen(TRSWPtr this);static void DrawPlacard(const Rect *rect, ThemeDrawState state);static void CenterWindow(short windowID);/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static KEYPtr NewKEY(short iconID){	register KEYPtr this;		this = (KEYPtr) NewPtr(sizeof(KEYRecord));	if (this == nil)		return nil;	SetRect(&this->bounds, 0, 0, 32, 32);	this->icon = iconID;	this->state = ttNone;	this->flags = 0x0000;	return this;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void DisposeKEY(KEYPtr this){	DisposePtr((Ptr) this);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void UpdateKEY(KEYPtr this){	DrawKEY(this);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void ActivateKEY(KEYPtr this, Boolean theFlag){	this->state = theFlag ? ttNone : ttDisabled;	DrawKEY(this);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void DrawKEY(KEYPtr this){	if (this->icon == 200)		PlotIconID(&this->bounds, atNone, this->state, this->icon + this->flags);	else if (this->state != ttSelected)		PlotIconID(&this->bounds, atNone, this->state, this->icon);	else		PlotIconID(&this->bounds, atNone, ttNone, this->icon + 1);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static Boolean PtInKEY(KEYPtr this, Point thePoint){	return PtInIconID(thePoint, &this->bounds, atNone, this->icon + this->flags);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void SetBoundsKEY(KEYPtr this, Rect *bounds){	this->bounds = *bounds;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void SetStateKEY(KEYPtr this, IconTransformType state){	if (this->state != state) {		this->state = state;		DrawKEY(this);	}}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void SetFlagsKEY(KEYPtr this, short flags){	if (this->flags != flags) {		this->flags = flags;		DrawKEY(this);	}}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static PADPtr NewPAD(void){	register PADPtr this;		this = (PADPtr) NewPtr(sizeof(PADRecord));	if (this == nil)		return nil;	SetRect(&this->bounds, 0, 0, 32, 32);	this->keys[0] = NewKEY(200);	this->keys[1] = NewKEY(200);	this->keys[2] = NewKEY(210);	this->keys[3] = NewKEY(212);	this->selected = -1;	this->hilited = true;	return this;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void DisposePAD(PADPtr this){	DisposeKEY(this->keys[3]);	DisposeKEY(this->keys[2]);	DisposeKEY(this->keys[1]);	DisposeKEY(this->keys[0]);	DisposePtr((Ptr) this);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void IdlePAD(PADPtr this){	short i, flags;	Byte driveSelect;		driveSelect = TRSGetDriveSelect(trs);	for (i = 0; i < 2; i++) {		flags = TRSHasDisk(trs, i) ? 0x0002 : 0x0000;		flags |= (driveSelect >> i) & 0x0001;		SetFlagsKEY(this->keys[i], flags);	}}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void UpdatePAD(PADPtr this){	short i;		DrawPAD(this);	for (i = 0; i < 4; i++)		UpdateKEY(this->keys[i]);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void ActivatePAD(PADPtr this, Boolean theFlag){	short i;		this->hilited = theFlag;	DrawPAD(this);	for (i = 0; i < 4; i++)		ActivateKEY(this->keys[i], this->hilited);	ValidRect(&this->bounds);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void DrawPAD(PADPtr this){	if (hasAppearance)		DrawThemePlacard(&this->bounds, this->hilited ? kThemeStateActive : kThemeStateDisabled);	else		DrawPlacard(&this->bounds, this->hilited ? kThemeStateActive : kThemeStateDisabled);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void ClickPAD(PADPtr this, Point thePoint){	Point mouse;	short i;	Boolean found, flag;		if (!PtInRect(thePoint, &this->bounds))		return;	found = false;	for (i = 0; i < 4; i++)		if (PtInKEY(this->keys[i], thePoint)) {			found = true;			break;		}	if (!found)		return;	SetStateKEY(this->keys[i], ttSelected);	flag = true;	while (StillDown()) {		GetMouse(&mouse);		if (PtInKEY(this->keys[i], mouse)) {			if (!flag) {				SetStateKEY(this->keys[i], ttSelected);				flag = true;			}		} else {			if (flag) {				SetStateKEY(this->keys[i], ttNone);				flag = false;			}		}	}	if (!flag)		return;	SetStateKEY(this->keys[i], ttNone);	switch (i) {		case 0:			if (!TRSHasDisk(trs, 0))				DoInsertDisk(0);			else				DoEjectDisk(0);			break;		case 1:			if (!TRSHasDisk(trs, 1))				DoInsertDisk(1);			else				DoEjectDisk(1);			break;		case 2:			TRSReset(trs);			break;		case 3:			TRSNMI(trs);			break;	}}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static short TrackPAD(PADPtr this, Point thePoint){	short drive, i;		drive = -1;	if (PtInRect(thePoint, &this->bounds))		for (i = 0; i < 2; i++)			if (PtInKEY(this->keys[i], thePoint)) {				drive = i;				break;			}	if (this->selected == drive)		return this->selected;	if (this->selected != -1)		SetStateKEY(this->keys[this->selected], this->hilited ? ttNone : ttDisabled);	this->selected = drive;	if (this->selected != -1)		SetStateKEY(this->keys[this->selected], ttSelected);	return this->selected;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void ClearPAD(PADPtr this){	if (this->selected != -1)		SetStateKEY(this->keys[this->selected], this->hilited ? ttNone : ttDisabled);	this->selected = -1;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void SetBoundsPAD(PADPtr this, Rect *bounds){	Rect r;		this->bounds = *bounds;	r.top = this->bounds.top + 6;	r.left = this->bounds.left + 6;	r.bottom = r.top + 32;	r.right = r.left + 32;	SetBoundsKEY(this->keys[0], &r);	OffsetRect(&r, 32, 0);	SetBoundsKEY(this->keys[1], &r);	r.top = this->bounds.top + 14;	r.left = this->bounds.right - 30;	r.bottom = r.top + 16;	r.right = r.left + 16;	SetBoundsKEY(this->keys[3], &r);	OffsetRect(&r, -24, 0);	SetBoundsKEY(this->keys[2], &r);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/WindowPtr NewTRSW(void){	register TRSWPtr this;	GrafPtr savePort;	OSErr error;		InitScreen();	this = (TRSWPtr) NewPtr(sizeof(TRSWRecord));	if (this == nil)		return nil;	this->screen = NewPtr(1024);	if (this->screen == nil) {		DisposePtr((Ptr) this);		return nil;	}	memset(this->screen, ' ', 1024);	SetCursorID(watchCursor);	CenterWindow(theWindowID);	this->window = GetNewCWindow(theWindowID, nil, (WindowPtr) -1);	if (this->window == nil) {		DisposePtr(this->screen);		DisposePtr((Ptr) this);		return nil;	}	this->trackingHandler = NewDragTrackingHandlerProc(TrackingHandler);	error = InstallTrackingHandler(this->trackingHandler, this->window, nil);	if (error != noErr) {		DisposeRoutineDescriptor(this->trackingHandler);		DisposeWindow(this->window);		DisposePtr(this->screen);		DisposePtr((Ptr) this);		return nil;	}	this->receiveHandler = NewDragReceiveHandlerProc(ReceiveHandler);	error = InstallReceiveHandler(this->receiveHandler, this->window, nil);	if (error != noErr) {		DisposeRoutineDescriptor(this->receiveHandler);		RemoveTrackingHandler(this->trackingHandler, this->window);		DisposeRoutineDescriptor(this->trackingHandler);		DisposeWindow(this->window);		DisposePtr(this->screen);		DisposePtr((Ptr) this);		return nil;	}	GetPort(&savePort);	SetPort(this->window);	this->foreColor = 1;	this->backColor = 0;	HidePen();	GetFNum("\pTRS-64", &this->font64);	TextFont(this->font64);	TextFace(0);	TextMode(srcCopy);	TextSize(9);	DrawChar(' ');	SetFontLock(true);	TextSize(18);	DrawChar(' ');	SetFontLock(true);	GetFNum("\pTRS-32", &this->font32);	TextFont(this->font32);	TextFace(0);	TextMode(srcCopy);	TextSize(9);	DrawChar(' ');	SetFontLock(true);	TextSize(18);	DrawChar(' ');	SetFontLock(true);	ShowPen();	this->keypad = NewPAD();	this->dispSize = false;	this->dispMode = false;	SetWRefCon(this->window, (long) this);	SetWindowKind(this->window, trsKind);	ResizeWindowContents(this);	ShowWindow(this->window);	AdjustZoom(this);	SetPort(savePort);	return this->window;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/void DisposeTRSW(WindowPtr theWindow){	register TRSWPtr this;		this = (TRSWPtr) GetWRefCon(theWindow);	SetCursorID(watchCursor);	HideWindow(this->window);	DisposePAD(this->keypad);	RemoveReceiveHandler(this->receiveHandler, this->window);	DisposeRoutineDescriptor(this->receiveHandler);	RemoveTrackingHandler(this->trackingHandler, this->window);	DisposeRoutineDescriptor(this->trackingHandler);	DisposeWindow(this->window);	DisposePtr(this->screen);	DisposePtr((Ptr) this);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/void IdleTRSW(WindowPtr theWindow){	register TRSWPtr this;	GrafPtr savePort;		this = (TRSWPtr) GetWRefCon(theWindow);	GetPort(&savePort);	SetPort(this->window);	IdlePAD(this->keypad);	CheckScreen(this);	SetPort(savePort);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/void UpdateTRSW(WindowPtr theWindow){	register TRSWPtr this;	GrafPtr savePort;		this = (TRSWPtr) GetWRefCon(theWindow);	GetPort(&savePort);	SetPort(this->window);	PmForeColor(0);	PmBackColor(1);	BeginUpdate(this->window);	UpdatePAD(this->keypad);	DrawScreen(this);	EndUpdate(this->window);	SetPort(savePort);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/void ActivateTRSW(WindowPtr theWindow, Boolean theFlag){	register TRSWPtr this;	GrafPtr savePort;		this = (TRSWPtr) GetWRefCon(theWindow);	GetPort(&savePort);	SetPort(this->window);	ActivatePAD(this->keypad, theFlag);	SetPort(savePort);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/void ClickTRSW(WindowPtr theWindow, const EventRecord *theEvent){	register TRSWPtr this;	Point thePoint;	GrafPtr savePort;		this = (TRSWPtr) GetWRefCon(theWindow);	GetPort(&savePort);	SetPort(this->window);	thePoint = theEvent->where;	GlobalToLocal(&thePoint);	ClickPAD(this->keypad, thePoint);	SetPort(savePort);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/void ZoomTRSW(WindowPtr theWindow, short partCode){#if GENERATINGPOWERPC#pragma unused (partCode)#endif		register TRSWPtr this;	Rect r;	GrafPtr savePort;		this = (TRSWPtr) GetWRefCon(theWindow);	GetPort(&savePort);	SetPort(this->window);	r = this->window->portRect;	EraseRect(&r);	LocalToGlobal((Point *) &r.top);	LocalToGlobal((Point *) &r.bottom);	if (this->dispSize) {		this->stdState = r;		SetWindowUserState(this->window, &this->userState);		SetWindowStandardState(this->window, &this->stdState);		ZoomWindow(this->window, inZoomIn, true);		this->dispSize = false;	} else {		this->userState = r;		SetWindowUserState(this->window, &this->userState);		SetWindowStandardState(this->window, &this->stdState);		ZoomWindow(this->window, inZoomOut, true);		this->dispSize = true;	}	ResizeWindowContents(this);	InvalRect(&this->window->portRect);	SetPort(savePort);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static pascal OSErr TrackingHandler(DragTrackingMessage message, WindowPtr theWindow,		void *refCon, DragReference theDrag){#if GENERATINGPOWERPC#pragma unused (refCon)#endif		register TRSWPtr this;	HFSFlavor theHFSFlavor;	Point mouse;	ItemReference theItem;	GrafPtr savePort;	Size dataSize;	OSErr error;	unsigned short count;		this = (TRSWPtr) GetWRefCon(theWindow);	GetPort(&savePort);	SetPort(this->window);	switch (message) {		case kDragTrackingEnterHandler:			this->canAcceptItems = false;			error = CountDragItems(theDrag, &count);			if (error != noErr || count != 1)				break;			error = GetDragItemReferenceNumber(theDrag, 1, &theItem);			if (error != noErr)				break;			error = GetFlavorDataSize(theDrag, theItem, flavorTypeHFS, &dataSize);			if (error != noErr || dataSize > sizeof(HFSFlavor))				break;			error = GetFlavorData(theDrag, theItem, flavorTypeHFS, &theHFSFlavor, &dataSize, 0);			if (error == noErr && theHFSFlavor.fileType == 'MD80')				this->canAcceptItems = true;			break;		case kDragTrackingEnterWindow:			if (!this->canAcceptItems)				break;			this->cursorInDrive = -1;			break;		case kDragTrackingInWindow:			if (!this->canAcceptItems)				break;			GetDragMouse(theDrag, &mouse, nil);			GlobalToLocal(&mouse);			this->cursorInDrive = TrackPAD(this->keypad, mouse);			break;		case kDragTrackingLeaveWindow:			if (!this->canAcceptItems)				break;			ClearPAD(this->keypad);			break;		case kDragTrackingLeaveHandler:			break;	}	SetPort(savePort);	return noErr;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static pascal OSErr ReceiveHandler(WindowPtr theWindow, void *refCon, DragReference theDrag){#if GENERATINGPOWERPC#pragma unused (refCon)#endif		register TRSWPtr this;	HFSFlavor theHFSFlavor;	ItemReference theItem;	GrafPtr savePort;	Size dataSize;	OSErr error;	Boolean targetIsFolder, wasAliased;		this = (TRSWPtr) GetWRefCon(theWindow);	if (!this->canAcceptItems || this->cursorInDrive == -1)		return dragNotAcceptedErr;	GetPort(&savePort);	SetPort(this->window);	ClearPAD(this->keypad);	SetCursorID(watchCursor);	error = GetDragItemReferenceNumber(theDrag, 1, &theItem);	if (error != noErr) {		SetPort(savePort);		return error;	}	error = GetFlavorDataSize(theDrag, theItem, flavorTypeHFS, &dataSize);	if (error != noErr) {		SetPort(savePort);		return error;	}	if (dataSize > sizeof(HFSFlavor)) {		SetPort(savePort);		return memFullErr;	}	error = GetFlavorData(theDrag, theItem, flavorTypeHFS, &theHFSFlavor, &dataSize, 0);	if (error != noErr) {		SetPort(savePort);		return error;	}	if (theHFSFlavor.fileType != 'MD80') {		SetPort(savePort);		return dragNotAcceptedErr;	}	error = ResolveAliasFile(&theHFSFlavor.fileSpec, true, &targetIsFolder, &wasAliased);	if (error != noErr) {		SetPort(savePort);		return error;	}	error = TRSInsertDisk(trs, this->cursorInDrive, &theHFSFlavor.fileSpec);	if (error != noErr) {		SetPort(savePort);		return error;	}	SetPort(savePort);	return noErr;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void ResizeWindowContents(TRSWPtr this){	Rect r;	short n;		n = this->dispSize ? 400 : 200;	this->screenFrame = this->window->portRect;	this->screenFrame.bottom = n;	r = this->window->portRect;	InsetRect(&r, -1, -1);	r.top = n;	SetBoundsPAD(this->keypad, &r);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void AdjustZoom(TRSWPtr this){	Rect *contRect, *strucRect, r;		contRect = &(*((WindowPeek) this->window)->contRgn)->rgnBBox;	strucRect = &(*((WindowPeek) this->window)->strucRgn)->rgnBBox;	r = qd.screenBits.bounds;	r.top += GetMBarHeight() + contRect->top - strucRect->top + 2;	r.left += contRect->left - strucRect->left + 2;	r.bottom = r.top + 443;	r.right = r.left + 784;	this->stdState = r;	SetWindowStandardState(this->window, &r);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void InitScreen(void){	Point *p;	short i, j, x, y;		if (posX1 == nil) {		posX1 = (Point *) NewPtr(1024 * sizeof(Point));		if (posX1 == nil)			ExitToShell();		p = posX1;		y = 4 + 7;		for (i = 0; i < 16; i++) {			x = 4;			for (j = 0; j < 64; j++) {				p->v = y;				p->h = x;				p++;				x += 6;			}			y += 12;		}	}	if (posX2 == nil) {		posX2 = (Point *) NewPtr(1024 * sizeof(Point));		if (posX2 == nil)			ExitToShell();		p = posX2;		y = 8 + 14;		for (i = 0; i < 16; i++) {			x = 8;			for (j = 0; j < 64; j++) {				p->v = y;				p->h = x;				p++;				x += 12;			}			y += 24;		}	}}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void DrawScreen(TRSWPtr this){	RGBColor saveForeColor, saveBackColor;	Rect r;	Point *pos;	GDPtr gd;	Ptr p;	short n, i;		GetForeColor(&saveForeColor);	GetBackColor(&saveBackColor);	r = this->screenFrame;	LocalToGlobal((Point *) &r.top);	LocalToGlobal((Point *) &r.bottom);	gd = *GetMaxDevice(&r);	if ((gd->gdFlags & (1 << gdDevType)) != 0 && (*gd->gdPMap)->pixelSize >= 2) {		this->foreColor = 3;		this->backColor = 2;	} else {		this->foreColor = 1;		this->backColor = 0;	}	PmForeColor(this->foreColor);	PmBackColor(this->backColor);	EraseRect(&this->screenFrame);	if (!this->dispMode) {		TextFont(this->font64);		n = 64;	} else {		TextFont(this->font32);		n = 32;	}	if (!this->dispSize) {		TextSize(9);		pos = posX1;	} else {		TextSize(18);		pos = posX2;	}	p = this->screen;	for (i = 16; i != 0; i--) {		MoveTo(pos->h, pos->v);		TRSDrawText(p, n);		pos += 64;		p += n;	}	RGBForeColor(&saveForeColor);	RGBBackColor(&saveBackColor);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void CheckScreen(TRSWPtr this){	RGBColor saveForeColor, saveBackColor;	Point *pos, xy;	Ptr trsScreen, p, q, r, s, t, u;	short n, i, j, k, c;	Boolean mode;		GetForeColor(&saveForeColor);	GetBackColor(&saveBackColor);	PmForeColor(this->foreColor);	PmBackColor(this->backColor);	trsScreen = TRSGetScreen(trs);	mode = TRSGetMode(trs);	if (this->dispMode != mode) {		this->dispMode = mode;		if (!this->dispMode) {			TextFont(this->font64);			BlockMoveData(trsScreen, this->screen, 1024);			n = 64;		} else {			TextFont(this->font32);			p = trsScreen, q = this->screen;			for (i = 512; i != 0; i--)				*q++ = *p++, p++;			n = 32;		}		if (!this->dispSize) {			TextSize(9);			pos = posX1;		} else {			TextSize(18);			pos = posX2;		}		p = this->screen;		for (i = 16; i != 0; i--) {			MoveTo(pos->h, pos->v);			TRSDrawText(p, n);			pos += 64;			p += n;		}	} else {		pos = this->dispSize ? posX2 : posX1;		p = trsScreen, q = this->screen;		if (!this->dispMode) {			k = this->dispSize ? 8 : 32;			c = 1024/4;			do {				do {					if (*((long *) p)++ != *((long *) q)++)						break;					c--;				} while (c != 0);				if (c == 0)					break;				p -= 4, q -= 4;				i = (c - 1 & 0x000F) + 1;				c -= i;				i <<= 2;				do {					if (*p++ != *q++)						break;					i--;				} while (i != 0);				if (i == 0)					continue;				p--, q--;				do {					r = q;					do {						t = p, u = q;						do {							if (*p++ == *q++)								break;							i--;						} while (i != 0);						if (i != 0)							p--, q--;						for (j = q - u; j != 0; j--)							*u++ = *t++;						s = q;						if (i == 0)							break;						do {							if (*p++ != *q++)								break;							i--;						} while (i != 0);						if (i == 0)							break;						p--, q--;						if (q - s > k)							break;					} while (i != 0);					n = r - this->screen;					xy = pos[n];					MoveTo(xy.h, xy.v);					TRSDrawText(r, s - r);				} while (i != 0);			} while (c != 0);		} else {			k = this->dispSize ? 4 : 16;			c = 512;			do {				do {					if (*p++ != *q++) {						p++;						break;					}					p++;					c--;				} while (c != 0);				if (c == 0)					break;				p -= 2, q--;				i = (c - 1 & 0x001F) + 1;				c -= i;				do {					r = q;					do {						t = p, u = q;						do {							if (*p++ == *q++) {								p++;								break;							}							p++;							i--;						} while (i != 0);						if (i != 0)							p -= 2, q--;						for (j = q - u; j != 0; j--)							*u++ = *t++, t++;						s = q;						if (i == 0)							break;						do {							if (*p++ != *q++) {								p++;								break;							}							p++;							i--;						} while (i != 0);						if (i == 0)							break;						p -= 2, q--;						if (q - s > k)							break;					} while (i != 0);					n = r - this->screen;					xy = pos[n<<1];					MoveTo(xy.h, xy.v);					TRSDrawText(r, s - r);				} while (i != 0);			} while (c != 0);		}	}	RGBForeColor(&saveForeColor);	RGBBackColor(&saveBackColor);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void DrawPlacard(const Rect *rect, ThemeDrawState state){	Rect r;	RGBColor saveForeColor, saveBackColor;	GDPtr gd;		GetForeColor(&saveForeColor);	GetBackColor(&saveBackColor);	r = *rect;	LocalToGlobal((Point *) &r.top);	LocalToGlobal((Point *) &r.bottom);	gd = *GetMaxDevice(&r);	r = *rect;	if ((*gd->gdPMap)->pixelSize >= 4) {		if (state == kThemeStateDisabled) {			PmForeColor(4);			PmBackColor(6);			FrameRect(&r);			InsetRect(&r, 1, 1);			EraseRect(&r);		} else {			PmForeColor(0);			PmBackColor(6);			FrameRect(&r);			InsetRect(&r, 1, 1);			EraseRect(&r);			r.bottom -= 1;			r.right -= 1;			PmForeColor(1);			MoveTo(r.left, r.bottom-1);			LineTo(r.left, r.top);			LineTo(r.right-1, r.top);			PmForeColor(5);			MoveTo(r.left+1, r.bottom);			LineTo(r.right, r.bottom);			LineTo(r.right, r.top+1);		}	} else {		PmForeColor(0);		PmBackColor(1);		FrameRect(&r);		InsetRect(&r, 1, 1);		EraseRect(&r);	}	RGBForeColor(&saveForeColor);	RGBBackColor(&saveBackColor);}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/static void CenterWindow(short windowID){	WindowTHndl window;	WindowTPtr w;	short dh, dv;		window = (WindowTHndl) GetResource('WIND', windowID);	if (window == nil)		return;	HNoPurge((Handle) window);	w = *window;	dv = ((GetMBarHeight() + qd.screenBits.bounds.top - w->boundsRect.top) * 2 +			qd.screenBits.bounds.bottom - w->boundsRect.bottom) / 3;	dh = (qd.screenBits.bounds.left + qd.screenBits.bounds.right -			w->boundsRect.left - w->boundsRect.right) / 2;	OffsetRect(&w->boundsRect, dh, dv);	if (hasAppearance)		w->procID = kWindowFullZoomDocumentProc;}/*ÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑÑ*/
+/* TRSWin.c */
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+#include <MacTypes.h>
+#include <Icons.h>
+#include <Drag.h>
+#include <Appearance.h>
+#include <MacWindows.h>
+#include <Palettes.h>
+#include <string.h>
+#include <Fonts.h>
+#include <Resources.h>
+
+#include "TRS80.h"
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+#define theWindowID 128
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+extern TRSPtr trs;
+extern Boolean hasAppearance;
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+typedef struct {
+	Rect bounds;
+	short icon;
+	IconTransformType state;
+	short flags;
+} KEYRecord, *KEYPtr;
+
+typedef struct {
+	Rect bounds;
+	KEYPtr keys[4];
+	short selected;
+	Boolean hilited;
+} PADRecord, *PADPtr;
+
+typedef struct {
+	WindowPtr window;
+	DragTrackingHandlerUPP trackingHandler;
+	DragReceiveHandlerUPP receiveHandler;
+	Rect userState, stdState, screenFrame;
+	PADPtr keypad;
+	Ptr screen;
+	short foreColor, backColor, font64, font32, cursorInDrive;
+	Boolean dispSize, dispMode, canAcceptItems;
+} TRSWRecord, *TRSWPtr;
+
+static Point *posX1 = nil, *posX2 = nil;
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+extern void DoInsertDisk(short d);
+extern void DoEjectDisk(short d);
+extern void SetCursorID(short cursorID);
+
+extern void TRSReset(TRSPtr this);
+extern void TRSNMI(TRSPtr this);
+extern Ptr TRSGetScreen(TRSPtr this);
+extern Boolean TRSGetMode(TRSPtr this);
+extern Byte TRSGetDriveSelect(TRSPtr this);
+extern void TRSDrawText(const void *textBuf, short byteCount);
+extern Boolean TRSHasDisk(TRSPtr this, short d);
+extern OSErr TRSInsertDisk(TRSPtr this, short d, FSSpec *theDisk);
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static KEYPtr NewKEY(short iconID);
+static void DisposeKEY(KEYPtr this);
+static void UpdateKEY(KEYPtr this);
+static void ActivateKEY(KEYPtr this, Boolean theFlag);
+static void DrawKEY(KEYPtr this);
+static Boolean PtInKEY(KEYPtr this, Point thePoint);
+static void SetBoundsKEY(KEYPtr this, Rect *bounds);
+static void SetStateKEY(KEYPtr this, IconTransformType state);
+static void SetFlagsKEY(KEYPtr this, short flags);
+
+static PADPtr NewPAD(void);
+static void DisposePAD(PADPtr this);
+static void IdlePAD(PADPtr this);
+static void UpdatePAD(PADPtr this);
+static void ActivatePAD(PADPtr this, Boolean theFlag);
+static void DrawPAD(PADPtr this);
+static void ClickPAD(PADPtr this, Point thePoint);
+static short TrackPAD(PADPtr this, Point thePoint);
+static void ClearPAD(PADPtr this);
+static void SetBoundsPAD(PADPtr this, Rect *bounds);
+
+WindowPtr NewTRSW(void);
+void DisposeTRSW(WindowPtr theWindow);
+void IdleTRSW(WindowPtr theWindow);
+void UpdateTRSW(WindowPtr theWindow);
+void ActivateTRSW(WindowPtr theWindow, Boolean theFlag);
+void ClickTRSW(WindowPtr theWindow, const EventRecord *theEvent);
+void ZoomTRSW(WindowPtr theWindow, short partCode);
+
+static pascal OSErr TrackingHandler(DragTrackingMessage message, WindowPtr theWindow,
+		void *refCon, DragReference theDrag);
+static pascal OSErr ReceiveHandler(WindowPtr theWindow, void *refCon, DragReference theDrag);
+static void ResizeWindowContents(TRSWPtr this);
+static void AdjustZoom(TRSWPtr this);
+static void InitScreen(void);
+static void DrawScreen(TRSWPtr this);
+static void CheckScreen(TRSWPtr this);
+static void DrawPlacard(const Rect *rect, ThemeDrawState state);
+static void CenterWindow(short windowID);
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static KEYPtr NewKEY(short iconID)
+{
+	register KEYPtr this;
+	
+	this = (KEYPtr) NewPtr(sizeof(KEYRecord));
+	if (this == nil)
+		return nil;
+	SetRect(&this->bounds, 0, 0, 32, 32);
+	this->icon = iconID;
+	this->state = ttNone;
+	this->flags = 0x0000;
+	return this;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void DisposeKEY(KEYPtr this)
+{
+	DisposePtr((Ptr) this);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void UpdateKEY(KEYPtr this)
+{
+	DrawKEY(this);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void ActivateKEY(KEYPtr this, Boolean theFlag)
+{
+	this->state = theFlag ? ttNone : ttDisabled;
+	DrawKEY(this);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void DrawKEY(KEYPtr this)
+{
+	if (this->icon == 200)
+		PlotIconID(&this->bounds, atNone, this->state, this->icon + this->flags);
+	else if (this->state != ttSelected)
+		PlotIconID(&this->bounds, atNone, this->state, this->icon);
+	else
+		PlotIconID(&this->bounds, atNone, ttNone, this->icon + 1);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static Boolean PtInKEY(KEYPtr this, Point thePoint)
+{
+	return PtInIconID(thePoint, &this->bounds, atNone, this->icon + this->flags);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void SetBoundsKEY(KEYPtr this, Rect *bounds)
+{
+	this->bounds = *bounds;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void SetStateKEY(KEYPtr this, IconTransformType state)
+{
+	if (this->state != state) {
+		this->state = state;
+		DrawKEY(this);
+	}
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void SetFlagsKEY(KEYPtr this, short flags)
+{
+	if (this->flags != flags) {
+		this->flags = flags;
+		DrawKEY(this);
+	}
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static PADPtr NewPAD(void)
+{
+	register PADPtr this;
+	
+	this = (PADPtr) NewPtr(sizeof(PADRecord));
+	if (this == nil)
+		return nil;
+	SetRect(&this->bounds, 0, 0, 32, 32);
+	this->keys[0] = NewKEY(200);
+	this->keys[1] = NewKEY(200);
+	this->keys[2] = NewKEY(210);
+	this->keys[3] = NewKEY(212);
+	this->selected = -1;
+	this->hilited = true;
+	return this;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void DisposePAD(PADPtr this)
+{
+	DisposeKEY(this->keys[3]);
+	DisposeKEY(this->keys[2]);
+	DisposeKEY(this->keys[1]);
+	DisposeKEY(this->keys[0]);
+	DisposePtr((Ptr) this);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void IdlePAD(PADPtr this)
+{
+	short i, flags;
+	Byte driveSelect;
+	
+	driveSelect = TRSGetDriveSelect(trs);
+	for (i = 0; i < 2; i++) {
+		flags = TRSHasDisk(trs, i) ? 0x0002 : 0x0000;
+		flags |= (driveSelect >> i) & 0x0001;
+		SetFlagsKEY(this->keys[i], flags);
+	}
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void UpdatePAD(PADPtr this)
+{
+	short i;
+	
+	DrawPAD(this);
+	for (i = 0; i < 4; i++)
+		UpdateKEY(this->keys[i]);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void ActivatePAD(PADPtr this, Boolean theFlag)
+{
+	short i;
+	
+	this->hilited = theFlag;
+	DrawPAD(this);
+	for (i = 0; i < 4; i++)
+		ActivateKEY(this->keys[i], this->hilited);
+	ValidRect(&this->bounds);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void DrawPAD(PADPtr this)
+{
+	if (hasAppearance)
+		DrawThemePlacard(&this->bounds, this->hilited ? kThemeStateActive : kThemeStateDisabled);
+	else
+		DrawPlacard(&this->bounds, this->hilited ? kThemeStateActive : kThemeStateDisabled);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void ClickPAD(PADPtr this, Point thePoint)
+{
+	Point mouse;
+	short i;
+	Boolean found, flag;
+	
+	if (!PtInRect(thePoint, &this->bounds))
+		return;
+	found = false;
+	for (i = 0; i < 4; i++)
+		if (PtInKEY(this->keys[i], thePoint)) {
+			found = true;
+			break;
+		}
+	if (!found)
+		return;
+	SetStateKEY(this->keys[i], ttSelected);
+	flag = true;
+	while (StillDown()) {
+		GetMouse(&mouse);
+		if (PtInKEY(this->keys[i], mouse)) {
+			if (!flag) {
+				SetStateKEY(this->keys[i], ttSelected);
+				flag = true;
+			}
+		} else {
+			if (flag) {
+				SetStateKEY(this->keys[i], ttNone);
+				flag = false;
+			}
+		}
+	}
+	if (!flag)
+		return;
+	SetStateKEY(this->keys[i], ttNone);
+	switch (i) {
+		case 0:
+			if (!TRSHasDisk(trs, 0))
+				DoInsertDisk(0);
+			else
+				DoEjectDisk(0);
+			break;
+		case 1:
+			if (!TRSHasDisk(trs, 1))
+				DoInsertDisk(1);
+			else
+				DoEjectDisk(1);
+			break;
+		case 2:
+			TRSReset(trs);
+			break;
+		case 3:
+			TRSNMI(trs);
+			break;
+	}
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static short TrackPAD(PADPtr this, Point thePoint)
+{
+	short drive, i;
+	
+	drive = -1;
+	if (PtInRect(thePoint, &this->bounds))
+		for (i = 0; i < 2; i++)
+			if (PtInKEY(this->keys[i], thePoint)) {
+				drive = i;
+				break;
+			}
+	if (this->selected == drive)
+		return this->selected;
+	if (this->selected != -1)
+		SetStateKEY(this->keys[this->selected], this->hilited ? ttNone : ttDisabled);
+	this->selected = drive;
+	if (this->selected != -1)
+		SetStateKEY(this->keys[this->selected], ttSelected);
+	return this->selected;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void ClearPAD(PADPtr this)
+{
+	if (this->selected != -1)
+		SetStateKEY(this->keys[this->selected], this->hilited ? ttNone : ttDisabled);
+	this->selected = -1;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void SetBoundsPAD(PADPtr this, Rect *bounds)
+{
+	Rect r;
+	
+	this->bounds = *bounds;
+	r.top = this->bounds.top + 6;
+	r.left = this->bounds.left + 6;
+	r.bottom = r.top + 32;
+	r.right = r.left + 32;
+	SetBoundsKEY(this->keys[0], &r);
+	OffsetRect(&r, 32, 0);
+	SetBoundsKEY(this->keys[1], &r);
+	r.top = this->bounds.top + 14;
+	r.left = this->bounds.right - 30;
+	r.bottom = r.top + 16;
+	r.right = r.left + 16;
+	SetBoundsKEY(this->keys[3], &r);
+	OffsetRect(&r, -24, 0);
+	SetBoundsKEY(this->keys[2], &r);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+WindowPtr NewTRSW(void)
+{
+	register TRSWPtr this;
+	GrafPtr savePort;
+	OSErr error;
+	
+	InitScreen();
+	this = (TRSWPtr) NewPtr(sizeof(TRSWRecord));
+	if (this == nil)
+		return nil;
+	this->screen = NewPtr(1024);
+	if (this->screen == nil) {
+		DisposePtr((Ptr) this);
+		return nil;
+	}
+	memset(this->screen, ' ', 1024);
+	SetCursorID(watchCursor);
+	CenterWindow(theWindowID);
+	this->window = GetNewCWindow(theWindowID, nil, (WindowPtr) -1);
+	if (this->window == nil) {
+		DisposePtr(this->screen);
+		DisposePtr((Ptr) this);
+		return nil;
+	}
+	this->trackingHandler = NewDragTrackingHandlerProc(TrackingHandler);
+	error = InstallTrackingHandler(this->trackingHandler, this->window, nil);
+	if (error != noErr) {
+		DisposeRoutineDescriptor(this->trackingHandler);
+		DisposeWindow(this->window);
+		DisposePtr(this->screen);
+		DisposePtr((Ptr) this);
+		return nil;
+	}
+	this->receiveHandler = NewDragReceiveHandlerProc(ReceiveHandler);
+	error = InstallReceiveHandler(this->receiveHandler, this->window, nil);
+	if (error != noErr) {
+		DisposeRoutineDescriptor(this->receiveHandler);
+		RemoveTrackingHandler(this->trackingHandler, this->window);
+		DisposeRoutineDescriptor(this->trackingHandler);
+		DisposeWindow(this->window);
+		DisposePtr(this->screen);
+		DisposePtr((Ptr) this);
+		return nil;
+	}
+	GetPort(&savePort);
+	SetPort(this->window);
+	this->foreColor = 1;
+	this->backColor = 0;
+	HidePen();
+	GetFNum("\pTRS-64", &this->font64);
+	TextFont(this->font64);
+	TextFace(0);
+	TextMode(srcCopy);
+	TextSize(9);
+	DrawChar(' ');
+	SetFontLock(true);
+	TextSize(18);
+	DrawChar(' ');
+	SetFontLock(true);
+	GetFNum("\pTRS-32", &this->font32);
+	TextFont(this->font32);
+	TextFace(0);
+	TextMode(srcCopy);
+	TextSize(9);
+	DrawChar(' ');
+	SetFontLock(true);
+	TextSize(18);
+	DrawChar(' ');
+	SetFontLock(true);
+	ShowPen();
+	this->keypad = NewPAD();
+	this->dispSize = false;
+	this->dispMode = false;
+	SetWRefCon(this->window, (long) this);
+	SetWindowKind(this->window, trsKind);
+	ResizeWindowContents(this);
+	ShowWindow(this->window);
+	AdjustZoom(this);
+	SetPort(savePort);
+	return this->window;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+void DisposeTRSW(WindowPtr theWindow)
+{
+	register TRSWPtr this;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	SetCursorID(watchCursor);
+	HideWindow(this->window);
+	DisposePAD(this->keypad);
+	RemoveReceiveHandler(this->receiveHandler, this->window);
+	DisposeRoutineDescriptor(this->receiveHandler);
+	RemoveTrackingHandler(this->trackingHandler, this->window);
+	DisposeRoutineDescriptor(this->trackingHandler);
+	DisposeWindow(this->window);
+	DisposePtr(this->screen);
+	DisposePtr((Ptr) this);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+void IdleTRSW(WindowPtr theWindow)
+{
+	register TRSWPtr this;
+	GrafPtr savePort;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	GetPort(&savePort);
+	SetPort(this->window);
+	IdlePAD(this->keypad);
+	CheckScreen(this);
+	SetPort(savePort);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+void UpdateTRSW(WindowPtr theWindow)
+{
+	register TRSWPtr this;
+	GrafPtr savePort;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	GetPort(&savePort);
+	SetPort(this->window);
+	PmForeColor(0);
+	PmBackColor(1);
+	BeginUpdate(this->window);
+	UpdatePAD(this->keypad);
+	DrawScreen(this);
+	EndUpdate(this->window);
+	SetPort(savePort);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+void ActivateTRSW(WindowPtr theWindow, Boolean theFlag)
+{
+	register TRSWPtr this;
+	GrafPtr savePort;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	GetPort(&savePort);
+	SetPort(this->window);
+	ActivatePAD(this->keypad, theFlag);
+	SetPort(savePort);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+void ClickTRSW(WindowPtr theWindow, const EventRecord *theEvent)
+{
+	register TRSWPtr this;
+	Point thePoint;
+	GrafPtr savePort;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	GetPort(&savePort);
+	SetPort(this->window);
+	thePoint = theEvent->where;
+	GlobalToLocal(&thePoint);
+	ClickPAD(this->keypad, thePoint);
+	SetPort(savePort);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+void ZoomTRSW(WindowPtr theWindow, short partCode)
+{
+#if GENERATINGPOWERPC
+#pragma unused (partCode)
+#endif
+	
+	register TRSWPtr this;
+	Rect r;
+	GrafPtr savePort;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	GetPort(&savePort);
+	SetPort(this->window);
+	r = this->window->portRect;
+	EraseRect(&r);
+	LocalToGlobal((Point *) &r.top);
+	LocalToGlobal((Point *) &r.bottom);
+	if (this->dispSize) {
+		this->stdState = r;
+		SetWindowUserState(this->window, &this->userState);
+		SetWindowStandardState(this->window, &this->stdState);
+		ZoomWindow(this->window, inZoomIn, true);
+		this->dispSize = false;
+	} else {
+		this->userState = r;
+		SetWindowUserState(this->window, &this->userState);
+		SetWindowStandardState(this->window, &this->stdState);
+		ZoomWindow(this->window, inZoomOut, true);
+		this->dispSize = true;
+	}
+	ResizeWindowContents(this);
+	InvalRect(&this->window->portRect);
+	SetPort(savePort);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static pascal OSErr TrackingHandler(DragTrackingMessage message, WindowPtr theWindow,
+		void *refCon, DragReference theDrag)
+{
+#if GENERATINGPOWERPC
+#pragma unused (refCon)
+#endif
+	
+	register TRSWPtr this;
+	HFSFlavor theHFSFlavor;
+	Point mouse;
+	ItemReference theItem;
+	GrafPtr savePort;
+	Size dataSize;
+	OSErr error;
+	unsigned short count;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	GetPort(&savePort);
+	SetPort(this->window);
+	switch (message) {
+		case kDragTrackingEnterHandler:
+			this->canAcceptItems = false;
+			error = CountDragItems(theDrag, &count);
+			if (error != noErr || count != 1)
+				break;
+			error = GetDragItemReferenceNumber(theDrag, 1, &theItem);
+			if (error != noErr)
+				break;
+			error = GetFlavorDataSize(theDrag, theItem, flavorTypeHFS, &dataSize);
+			if (error != noErr || dataSize > sizeof(HFSFlavor))
+				break;
+			error = GetFlavorData(theDrag, theItem, flavorTypeHFS, &theHFSFlavor, &dataSize, 0);
+			if (error == noErr && theHFSFlavor.fileType == 'MD80')
+				this->canAcceptItems = true;
+			break;
+		case kDragTrackingEnterWindow:
+			if (!this->canAcceptItems)
+				break;
+			this->cursorInDrive = -1;
+			break;
+		case kDragTrackingInWindow:
+			if (!this->canAcceptItems)
+				break;
+			GetDragMouse(theDrag, &mouse, nil);
+			GlobalToLocal(&mouse);
+			this->cursorInDrive = TrackPAD(this->keypad, mouse);
+			break;
+		case kDragTrackingLeaveWindow:
+			if (!this->canAcceptItems)
+				break;
+			ClearPAD(this->keypad);
+			break;
+		case kDragTrackingLeaveHandler:
+			break;
+	}
+	SetPort(savePort);
+	return noErr;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static pascal OSErr ReceiveHandler(WindowPtr theWindow, void *refCon, DragReference theDrag)
+{
+#if GENERATINGPOWERPC
+#pragma unused (refCon)
+#endif
+	
+	register TRSWPtr this;
+	HFSFlavor theHFSFlavor;
+	ItemReference theItem;
+	GrafPtr savePort;
+	Size dataSize;
+	OSErr error;
+	Boolean targetIsFolder, wasAliased;
+	
+	this = (TRSWPtr) GetWRefCon(theWindow);
+	if (!this->canAcceptItems || this->cursorInDrive == -1)
+		return dragNotAcceptedErr;
+	GetPort(&savePort);
+	SetPort(this->window);
+	ClearPAD(this->keypad);
+	SetCursorID(watchCursor);
+	error = GetDragItemReferenceNumber(theDrag, 1, &theItem);
+	if (error != noErr) {
+		SetPort(savePort);
+		return error;
+	}
+	error = GetFlavorDataSize(theDrag, theItem, flavorTypeHFS, &dataSize);
+	if (error != noErr) {
+		SetPort(savePort);
+		return error;
+	}
+	if (dataSize > sizeof(HFSFlavor)) {
+		SetPort(savePort);
+		return memFullErr;
+	}
+	error = GetFlavorData(theDrag, theItem, flavorTypeHFS, &theHFSFlavor, &dataSize, 0);
+	if (error != noErr) {
+		SetPort(savePort);
+		return error;
+	}
+	if (theHFSFlavor.fileType != 'MD80') {
+		SetPort(savePort);
+		return dragNotAcceptedErr;
+	}
+	error = ResolveAliasFile(&theHFSFlavor.fileSpec, true, &targetIsFolder, &wasAliased);
+	if (error != noErr) {
+		SetPort(savePort);
+		return error;
+	}
+	error = TRSInsertDisk(trs, this->cursorInDrive, &theHFSFlavor.fileSpec);
+	if (error != noErr) {
+		SetPort(savePort);
+		return error;
+	}
+	SetPort(savePort);
+	return noErr;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void ResizeWindowContents(TRSWPtr this)
+{
+	Rect r;
+	short n;
+	
+	n = this->dispSize ? 400 : 200;
+	this->screenFrame = this->window->portRect;
+	this->screenFrame.bottom = n;
+	r = this->window->portRect;
+	InsetRect(&r, -1, -1);
+	r.top = n;
+	SetBoundsPAD(this->keypad, &r);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void AdjustZoom(TRSWPtr this)
+{
+	Rect *contRect, *strucRect, r;
+	
+	contRect = &(*((WindowPeek) this->window)->contRgn)->rgnBBox;
+	strucRect = &(*((WindowPeek) this->window)->strucRgn)->rgnBBox;
+	r = qd.screenBits.bounds;
+	r.top += GetMBarHeight() + contRect->top - strucRect->top + 2;
+	r.left += contRect->left - strucRect->left + 2;
+	r.bottom = r.top + 443;
+	r.right = r.left + 784;
+	this->stdState = r;
+	SetWindowStandardState(this->window, &r);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void InitScreen(void)
+{
+	Point *p;
+	short i, j, x, y;
+	
+	if (posX1 == nil) {
+		posX1 = (Point *) NewPtr(1024 * sizeof(Point));
+		if (posX1 == nil)
+			ExitToShell();
+		p = posX1;
+		y = 4 + 7;
+		for (i = 0; i < 16; i++) {
+			x = 4;
+			for (j = 0; j < 64; j++) {
+				p->v = y;
+				p->h = x;
+				p++;
+				x += 6;
+			}
+			y += 12;
+		}
+	}
+	if (posX2 == nil) {
+		posX2 = (Point *) NewPtr(1024 * sizeof(Point));
+		if (posX2 == nil)
+			ExitToShell();
+		p = posX2;
+		y = 8 + 14;
+		for (i = 0; i < 16; i++) {
+			x = 8;
+			for (j = 0; j < 64; j++) {
+				p->v = y;
+				p->h = x;
+				p++;
+				x += 12;
+			}
+			y += 24;
+		}
+	}
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void DrawScreen(TRSWPtr this)
+{
+	RGBColor saveForeColor, saveBackColor;
+	Rect r;
+	Point *pos;
+	GDPtr gd;
+	Ptr p;
+	short n, i;
+	
+	GetForeColor(&saveForeColor);
+	GetBackColor(&saveBackColor);
+	r = this->screenFrame;
+	LocalToGlobal((Point *) &r.top);
+	LocalToGlobal((Point *) &r.bottom);
+	gd = *GetMaxDevice(&r);
+	if ((gd->gdFlags & (1 << gdDevType)) != 0 && (*gd->gdPMap)->pixelSize >= 2) {
+		this->foreColor = 3;
+		this->backColor = 2;
+	} else {
+		this->foreColor = 1;
+		this->backColor = 0;
+	}
+	PmForeColor(this->foreColor);
+	PmBackColor(this->backColor);
+	EraseRect(&this->screenFrame);
+	if (!this->dispMode) {
+		TextFont(this->font64);
+		n = 64;
+	} else {
+		TextFont(this->font32);
+		n = 32;
+	}
+	if (!this->dispSize) {
+		TextSize(9);
+		pos = posX1;
+	} else {
+		TextSize(18);
+		pos = posX2;
+	}
+	p = this->screen;
+	for (i = 16; i != 0; i--) {
+		MoveTo(pos->h, pos->v);
+		TRSDrawText(p, n);
+		pos += 64;
+		p += n;
+	}
+	RGBForeColor(&saveForeColor);
+	RGBBackColor(&saveBackColor);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void CheckScreen(TRSWPtr this)
+{
+	RGBColor saveForeColor, saveBackColor;
+	Point *pos, xy;
+	Ptr trsScreen, p, q, r, s, t, u;
+	short n, i, j, k, c;
+	Boolean mode;
+	
+	GetForeColor(&saveForeColor);
+	GetBackColor(&saveBackColor);
+	PmForeColor(this->foreColor);
+	PmBackColor(this->backColor);
+	trsScreen = TRSGetScreen(trs);
+	mode = TRSGetMode(trs);
+	if (this->dispMode != mode) {
+		this->dispMode = mode;
+		if (!this->dispMode) {
+			TextFont(this->font64);
+			BlockMoveData(trsScreen, this->screen, 1024);
+			n = 64;
+		} else {
+			TextFont(this->font32);
+			p = trsScreen, q = this->screen;
+			for (i = 512; i != 0; i--)
+				*q++ = *p++, p++;
+			n = 32;
+		}
+		if (!this->dispSize) {
+			TextSize(9);
+			pos = posX1;
+		} else {
+			TextSize(18);
+			pos = posX2;
+		}
+		p = this->screen;
+		for (i = 16; i != 0; i--) {
+			MoveTo(pos->h, pos->v);
+			TRSDrawText(p, n);
+			pos += 64;
+			p += n;
+		}
+	} else {
+		pos = this->dispSize ? posX2 : posX1;
+		p = trsScreen, q = this->screen;
+		if (!this->dispMode) {
+			k = this->dispSize ? 8 : 32;
+			c = 1024/4;
+			do {
+				do {
+					if (*((long *) p)++ != *((long *) q)++)
+						break;
+					c--;
+				} while (c != 0);
+				if (c == 0)
+					break;
+				p -= 4, q -= 4;
+				i = (c - 1 & 0x000F) + 1;
+				c -= i;
+				i <<= 2;
+				do {
+					if (*p++ != *q++)
+						break;
+					i--;
+				} while (i != 0);
+				if (i == 0)
+					continue;
+				p--, q--;
+				do {
+					r = q;
+					do {
+						t = p, u = q;
+						do {
+							if (*p++ == *q++)
+								break;
+							i--;
+						} while (i != 0);
+						if (i != 0)
+							p--, q--;
+						for (j = q - u; j != 0; j--)
+							*u++ = *t++;
+						s = q;
+						if (i == 0)
+							break;
+						do {
+							if (*p++ != *q++)
+								break;
+							i--;
+						} while (i != 0);
+						if (i == 0)
+							break;
+						p--, q--;
+						if (q - s > k)
+							break;
+					} while (i != 0);
+					n = r - this->screen;
+					xy = pos[n];
+					MoveTo(xy.h, xy.v);
+					TRSDrawText(r, s - r);
+				} while (i != 0);
+			} while (c != 0);
+		} else {
+			k = this->dispSize ? 4 : 16;
+			c = 512;
+			do {
+				do {
+					if (*p++ != *q++) {
+						p++;
+						break;
+					}
+					p++;
+					c--;
+				} while (c != 0);
+				if (c == 0)
+					break;
+				p -= 2, q--;
+				i = (c - 1 & 0x001F) + 1;
+				c -= i;
+				do {
+					r = q;
+					do {
+						t = p, u = q;
+						do {
+							if (*p++ == *q++) {
+								p++;
+								break;
+							}
+							p++;
+							i--;
+						} while (i != 0);
+						if (i != 0)
+							p -= 2, q--;
+						for (j = q - u; j != 0; j--)
+							*u++ = *t++, t++;
+						s = q;
+						if (i == 0)
+							break;
+						do {
+							if (*p++ != *q++) {
+								p++;
+								break;
+							}
+							p++;
+							i--;
+						} while (i != 0);
+						if (i == 0)
+							break;
+						p -= 2, q--;
+						if (q - s > k)
+							break;
+					} while (i != 0);
+					n = r - this->screen;
+					xy = pos[n<<1];
+					MoveTo(xy.h, xy.v);
+					TRSDrawText(r, s - r);
+				} while (i != 0);
+			} while (c != 0);
+		}
+	}
+	RGBForeColor(&saveForeColor);
+	RGBBackColor(&saveBackColor);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void DrawPlacard(const Rect *rect, ThemeDrawState state)
+{
+	Rect r;
+	RGBColor saveForeColor, saveBackColor;
+	GDPtr gd;
+	
+	GetForeColor(&saveForeColor);
+	GetBackColor(&saveBackColor);
+	r = *rect;
+	LocalToGlobal((Point *) &r.top);
+	LocalToGlobal((Point *) &r.bottom);
+	gd = *GetMaxDevice(&r);
+	r = *rect;
+	if ((*gd->gdPMap)->pixelSize >= 4) {
+		if (state == kThemeStateDisabled) {
+			PmForeColor(4);
+			PmBackColor(6);
+			FrameRect(&r);
+			InsetRect(&r, 1, 1);
+			EraseRect(&r);
+		} else {
+			PmForeColor(0);
+			PmBackColor(6);
+			FrameRect(&r);
+			InsetRect(&r, 1, 1);
+			EraseRect(&r);
+			r.bottom -= 1;
+			r.right -= 1;
+			PmForeColor(1);
+			MoveTo(r.left, r.bottom-1);
+			LineTo(r.left, r.top);
+			LineTo(r.right-1, r.top);
+			PmForeColor(5);
+			MoveTo(r.left+1, r.bottom);
+			LineTo(r.right, r.bottom);
+			LineTo(r.right, r.top+1);
+		}
+	} else {
+		PmForeColor(0);
+		PmBackColor(1);
+		FrameRect(&r);
+		InsetRect(&r, 1, 1);
+		EraseRect(&r);
+	}
+	RGBForeColor(&saveForeColor);
+	RGBBackColor(&saveBackColor);
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
+
+static void CenterWindow(short windowID)
+{
+	WindowTHndl window;
+	WindowTPtr w;
+	short dh, dv;
+	
+	window = (WindowTHndl) GetResource('WIND', windowID);
+	if (window == nil)
+		return;
+	HNoPurge((Handle) window);
+	w = *window;
+	dv = ((GetMBarHeight() + qd.screenBits.bounds.top - w->boundsRect.top) * 2 +
+			qd.screenBits.bounds.bottom - w->boundsRect.bottom) / 3;
+	dh = (qd.screenBits.bounds.left + qd.screenBits.bounds.right -
+			w->boundsRect.left - w->boundsRect.right) / 2;
+	OffsetRect(&w->boundsRect, dh, dv);
+	if (hasAppearance)
+		w->procID = kWindowFullZoomDocumentProc;
+}
+
+/*â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”*/
